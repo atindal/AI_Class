@@ -1,3 +1,6 @@
+from operator import truediv
+from pydoc import doc
+from select import select
 from typing import List, Tuple, Set, Dict, Optional, cast
 from environments.environment_abstract import Environment, State
 from environments.farm_grid_world import FarmState
@@ -78,7 +81,6 @@ def visualize_dfs(viz, popped_node: Node, lifo: List[Node]):
 
     viz.window.update()
 
-
 def breadth_first_search(start_state: State, env: Environment, viz) -> Optional[List[int]]:
     """ Breadth-first search
 
@@ -88,9 +90,43 @@ def breadth_first_search(start_state: State, env: Environment, viz) -> Optional[
 
     :return: a list of integers representing the actions that should be taken to reach the goal or None if no solution
     """
-    pass
+    if env.is_terminal(start_state):
+        return []
+    
+    OPEN = []
+    CLOSED = []
 
+    root = Node(start_state, 0, [], None, 0)
 
+    OPEN.append(root)
+    CLOSED.append(root.state)
+
+    while len(OPEN) > 0:
+        selected = OPEN.pop()
+        for action in env.get_actions(selected.state):
+            retList = get_next_state_and_transition_cost(env, selected.state, action)
+            child = Node(retList[0], retList[1], selected.parent_action + [action], selected, selected.depth + 1)
+
+            if env.is_terminal(child.state):
+                return child.parent_action
+            
+            if not (child.state in CLOSED):
+                CLOSED.append(child.state)
+                OPEN.append(child)
+
+    return None
+
+def isCycle(start_state, end_node, env):
+    currrent_state = start_state
+
+    for i in range(len(end_node.parent_action)-1):
+        retList = get_next_state_and_transition_cost(env, currrent_state, end_node.parent_action[i])
+        currrent_state = retList[0]
+        if currrent_state == end_node.state:
+            return True
+    
+    return False
+        
 def depth_limited_search(start_state: State, env: Environment, limit: int, viz) -> Optional[List[int]]:
     """ Depth-limited search
 
@@ -102,7 +138,23 @@ def depth_limited_search(start_state: State, env: Environment, limit: int, viz) 
     :return: a list of integers representing the actions that should be taken to reach the goal or None if no solution
     was found
     """
-    pass
+    
+    OPEN = []
+    OPEN.append(Node(start_state, 0, [], None, 0))
+
+    while len(OPEN) > 0:
+        selected = OPEN.pop()
+
+        if env.is_terminal(selected.state):
+            return selected.parent_action
+        
+        if (selected.depth < limit) and (not isCycle(start_state, selected, env)):
+            for action in env.get_actions(selected.state):
+                retList = get_next_state_and_transition_cost(env, selected.state, action)
+                child = Node(retList[0], retList[1], selected.parent_action + [action], selected, selected.depth + 1)
+                OPEN.append(child)
+
+    return None
 
 
 def iterative_deepening_search(start_state: State, env: Environment, viz) -> List[int]:
@@ -114,8 +166,20 @@ def iterative_deepening_search(start_state: State, env: Environment, viz) -> Lis
 
     :return: a list of integers representing the actions that should be taken to reach the goal
     """
-    pass
+    soln = None
+    limit = 0
 
+    while soln == None:
+        soln = depth_limited_search(start_state, env, limit, viz)
+        limit = limit + 1
+    
+    return soln
+
+
+def heuristic(currState):
+    x1,y1 = currState.agent_idx[0], currState.agent_idx[1]
+    x2,y2 = currState.goal_idx[0], currState.goal_idx[1]
+    return abs((x1-x2) + (y1-y2))
 
 def best_first_search(start_state: State, env: Environment, weight_g: float, weight_h: float,
                       viz) -> Optional[List[int]]:
@@ -129,4 +193,33 @@ def best_first_search(start_state: State, env: Environment, weight_g: float, wei
 
     :return: a list of integers representing the actions that should be taken to reach the goal or None if no solution
     """
-    pass
+    OPEN = []
+    CLOSED = {}
+
+    root = Node(start_state, 0, [], None, 0)
+
+    heappush(OPEN, (weight_g * root.path_cost + weight_h * heuristic(root.state), root))
+    CLOSED[root.state] = root.path_cost
+
+    while len(OPEN) > 0:
+        selected = heappop(OPEN)[1]
+
+        if env.is_terminal(selected.state):
+            return selected.parent_action
+
+        for action in env.get_actions(selected.state):
+            retList = get_next_state_and_transition_cost(env, selected.state, action)
+            child = Node(retList[0], selected.path_cost + retList[1], selected.parent_action + [action], selected, selected.depth + 1)
+
+            if (not (child.state in CLOSED)) or (child.path_cost < CLOSED[child.state]):
+                CLOSED[child.state] = child.path_cost
+                heappush(OPEN, (weight_g * child.path_cost + weight_h * heuristic(child.state), child))
+
+            if env.is_terminal(child.state):
+                return child.parent_action
+            
+            if not (child.state in CLOSED):
+                CLOSED.append(child.state)
+                OPEN.append(child)
+
+    return None
